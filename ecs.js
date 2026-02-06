@@ -14,7 +14,7 @@ export class ECSManager {
         entity.ecs_manager = this;
         this.entities.set(id, entity);
 
-        const components = entity.temp_components;
+        const components = entity.components;
 
         for (let c of components) {
             if (!this.component_methods.has(c.id)) {
@@ -70,7 +70,9 @@ export class ECSManager {
             middle_arche.EntityIds = [id];
         }
 
-        entity.temp_components = null;
+        entity.components = null;
+    }
+    getEntity(id) {
     }
     _takeEntity(id) {
         const swapAndPop = (arr, i) => {
@@ -104,13 +106,13 @@ export class ECSManager {
             });
         }
 
-        entity.temp_components = components;
+        entity.components = components;
         this.entities.delete(entity.id);
         return(entity);
     }
     deleteEntity(id) {
         const entity = this._takeEntity(id);
-        for (let component of entity.temp_components) {
+        for (let component of entity.components) {
             const methods = this.component_methods.get(component.id);
             if (methods.onDelete) {
                 methods.onDelete(component.props);
@@ -124,10 +126,10 @@ export class ECSManager {
     deleteSystem(id) {
         this.systems.delete(id);
     }
-    queryFor(needed_comps) {
+    query(query_request) {
         const valid_keys = [...this.archetypes.keys()].filter(k => {
             k = new Set(k.split(`|`));
-            for (let c of needed_comps) {
+            for (let c of query_request.components) {
                 if (!k.has(c)) {
                     return(false);
                 }
@@ -143,10 +145,12 @@ export class ECSManager {
     }
     upd(dt) {
         for (let [_, system] of this.systems) {
-            const middle_arches = this.queryFor(system.query_request.components);
-            for (let middle_arche of middle_arches) {
-                system.query_request.entities = middle_arche;
-                system.upd(dt);
+            if (system.query_request) {
+                const middle_arches = this.query(system.query_request);
+                for (let middle_arche of middle_arches) {
+                    system.query_request.entities = middle_arche;
+                    system.upd(dt);
+                }
             }
         }
     }
@@ -158,25 +162,25 @@ export class Entity {
         this.ecs_manager = null;
         this.archetype = null;
         this.archetype_index = null;
-        this.temp_components = [];
+        this.components = [];
     }
     addComponent(component) {
-        if (this.temp_components) {
-            this.temp_components.push(component);
+        if (this.components) {
+            this.components.push(component);
         }
         else {
             this.ecs_manager._takeEntity(this.id);
-            this.temp_components.push(component);
+            this.components.push(component);
             this.ecs_manager.addEntity(this, this.id);
         }
     }
     deleteComponent(id) {
-        if (this.temp_components) {
-            this.temp_components = this.temp_components.filter(c => c.id !== id);
+        if (this.components) {
+            this.components = this.components.filter(c => c.id !== id);
         }
         else {
             this.ecs_manager._takeEntity(this.id);
-            this.temp_components = this.temp_components.filter(c => c.id !== id);
+            this.components = this.components.filter(c => c.id !== id);
             this.ecs_manager.addEntity(this, this.id);
         }
     }
