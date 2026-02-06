@@ -139,6 +139,7 @@ export class ECSManager {
     }
     addSystem(system) {
         system.ecs_manager = this;
+        system.init();
         this.systems.set(system.id, system);
     }
     deleteSystem(id) {
@@ -217,5 +218,6 @@ export class System {
         this.ecs_manager = null;
         this.id = this.constructor.name
     }
+    init() {}
     upd(dt) {}
 }
