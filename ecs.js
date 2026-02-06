@@ -72,7 +72,24 @@ export class ECSManager {
 
         entity.components = null;
     }
-    getEntity(id) {
+    getComponents(id) {
+        const entity = this.entities.get(id);
+        const middle_arche = this.archetypes.get(entity.archetype);
+
+        const components = {};
+        for (let k in middle_arche) {
+            if (k === `EntityIds`) {
+                continue;
+            }
+            components.k = {};
+
+            const final_arche = middle_arche[k];
+            for (let prop in final_arche) {
+                components.k[prop] = final_arche[prop][entity.archetype_index];
+            }
+        }
+
+        return(components);
     }
     _takeEntity(id) {
         const swapAndPop = (arr, i) => {
