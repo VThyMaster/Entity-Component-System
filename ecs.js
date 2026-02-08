@@ -72,11 +72,11 @@ export class ECSManager {
             if (k === `EntityIds`) {
                 continue;
             }
-            components.k = {};
+            components[k] = {};
 
             const final_arche = middle_arche[k];
             for (let prop in final_arche) {
-                components.k[prop] = final_arche[prop][entity.archetype_index];
+                components[k][prop] = final_arche[prop][entity.archetype_index];
             }
         }
 
