@@ -3,12 +3,11 @@
 
 
 export class ECSManager {
-    constructor() {
-        this.entities = new Map();
-        this.component_methods = new Map();
-        this.systems = new Map();
-        this.archetypes = new Map();
-    }
+    entities = new Map();
+    component_handlers = new Map();
+    systems = new Map();
+    archetypes = new Map();
+
     addEntity(entity, id) {
         entity.id = id;
         entity.ecs_manager = this;
@@ -17,16 +16,8 @@ export class ECSManager {
         const components = entity.components;
 
         for (let c of components) {
-            if (!this.component_methods.has(c.id)) {
-                const funcs = Object.getOwnPropertyNames(c.constructor.prototype)
-                const methods = {};
-
-                for (let func of funcs) {
-                    if (func !== `constructor`) {
-                        methods[func] = c.constructor.prototype[func];
-                    }
-                }
-                this.component_methods.set(c.id, methods);
+            if (!this.component_handlers.has(c.id)) {
+                this.component_handlers.set(c.id, c.handlers);
             }
         }
 
@@ -72,27 +63,7 @@ export class ECSManager {
 
         entity.components = null;
     }
-    getComponents(id) {
-        const entity = this.entities.get(id);
-        const middle_arche = this.archetypes.get(entity.archetype);
-
-        const components = {};
-        for (let k in middle_arche) {
-            if (k === `EntityIds`) {
-                continue;
-            }
-            const props = {};
-            components[k] = props;
-
-            const final_arche = middle_arche[k];
-            for (let prop in final_arche) {
-                props[prop] = final_arche[prop][entity.archetype_index];
-            }
-        }
-
-        return(components);
-    }
-    _takeEntity(id) {
+    _removeEntity(id) {
         const swapAndPop = (arr, i) => {
             const last = arr.length - 1;
             [arr[i], arr[last]] = [arr[last], arr[i]];
@@ -129,12 +100,9 @@ export class ECSManager {
         return(entity);
     }
     deleteEntity(id) {
-        const entity = this._takeEntity(id);
-        for (let component of entity.components) {
-            const methods = this.component_methods.get(component.id);
-            if (methods.onDelete) {
-                methods.onDelete(component.props);
-            }
+        const entity = this._removeEntity(id);
+        for (let c of entity.components) {
+            this.component_handlers.get(c.id).onDelete(c.props);
         }
     }
     addSystem(system) {
@@ -146,49 +114,67 @@ export class ECSManager {
         this.systems.delete(id);
     }
     query(query_request) {
-        const valid_keys = [...this.archetypes.keys()].filter(k => {
-            k = new Set(k.split(`|`));
-            for (let c of query_request.components) {
-                if (!k.has(c)) {
-                    return(false);
+        if (query_request.type === `WITH`) {
+            const valid_keys = [...this.archetypes.keys()].filter(k => {
+                k = new Set(k.split(`|`));
+                for (let c of query_request.components) {
+                    if (!k.has(c)) {
+                        return(false);
+                    }
+                }
+                return(true);
+            });
+    
+            const middle_arches = []
+            for (let k of valid_keys) {
+                middle_arches.push(this.archetypes.get(k));
+            }
+            return(middle_arches);
+        }
+        else if (query_request.type === `ID`) {
+            const entity = this.entities.get(query_request.id);
+            const middle_arche = this.archetypes.get(entity.archetype);
+    
+            const components = {};
+            for (let k in middle_arche) {
+                if (k === `EntityIds`) {
+                    continue;
+                }
+                const props = {};
+                components[k] = props;
+    
+                const final_arche = middle_arche[k];
+                for (let prop in final_arche) {
+                    Object.defineProperty(props, prop, {
+                        get: () => final_arche[prop][entity.archetype_index],
+                        set: (val) => final_arche[prop][entity.archetype_index] = val
+                    });
                 }
             }
-            return(true);
-        });
-
-        const middle_arches = []
-        for (let k of valid_keys) {
-            middle_arches.push(this.archetypes.get(k));
+    
+            return(components);
         }
-        return(middle_arches);
     }
     upd(dt) {
         for (let [_, system] of this.systems) {
-            if (system.query_request) {
-                const middle_arches = this.query(system.query_request);
-                for (let middle_arche of middle_arches) {
-                    system.query_request.entities = middle_arche;
-                    system.upd(dt);
-                }
-            }
+            system.upd(dt);
         }
     }
 }
 
 export class Entity {
-    constructor() {
-        this.id = null;
-        this.ecs_manager = null;
-        this.archetype = null;
-        this.archetype_index = null;
-        this.components = [];
-    }
+    id = null;
+    ecs_manager = null;
+    archetype = null;
+    archetype_index = null;
+    components = [];
+
     addComponent(component) {
         if (this.components) {
             this.components.push(component);
         }
         else {
-            this.ecs_manager._takeEntity(this.id);
+            this.ecs_manager._removeEntity(this.id);
             this.components.push(component);
             this.ecs_manager.addEntity(this, this.id);
         }
@@ -198,7 +184,7 @@ export class Entity {
             this.components = this.components.filter(c => c.id !== id);
         }
         else {
-            this.ecs_manager._takeEntity(this.id);
+            this.ecs_manager._removeEntity(this.id);
             this.components = this.components.filter(c => c.id !== id);
             this.ecs_manager.addEntity(this, this.id);
         }
@@ -206,18 +192,18 @@ export class Entity {
 }
 
 export class Component {
-    constructor() {
-        this.props = {};
-        this.id = this.constructor.name
-    }
-    onDelete(props) {}
+    id = this.constructor.name;
+    props = {};
+
+    handlers = {
+        onDelete: (props) => {}
+    };
 }
 
 export class System {
-    constructor() {
-        this.ecs_manager = null;
-        this.id = this.constructor.name
-    }
+    id = this.constructor.name;
+    ecs_manager = null;
+
     init() {}
     upd(dt) {}
 }
