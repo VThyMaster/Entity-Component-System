@@ -8,6 +8,9 @@ export class ECSManager {
     systems = new Map();
     archetypes = new Map();
 
+    constructor(uniforms = {}) {
+        this.uniforms = uniforms;
+    }
     addEntity(entity, id) {
         entity.id = id;
         entity.ecs_manager = this;
